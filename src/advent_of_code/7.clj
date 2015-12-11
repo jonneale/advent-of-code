@@ -1,11 +1,5 @@
 (ns advent-of-code.7)
 
-;; bn RSHIFT 2 -> bo
-;; lf RSHIFT 1 -> ly
-;; fo RSHIFT 3 -> fq
-
-;; {[bn bo] (rshift 2)}
-
 (defn- to-unsigned
   [x]
   (if (> 0 x)
@@ -25,73 +19,100 @@
 (def input
   (clojure.string/split (slurp "./resources/7.txt") #"\n"))
 
-(defn get-target-node
+(defn- get-target-node
   [instruction]
   (keyword (last (re-find #"-> (.*)" instruction))))
 
-(defn wire-input
-  [circuit first-command instruction]
-  (assoc circuit
-    (get-target-node instruction)
-    (Integer/parseInt first-command)))
-
-(defn wire-not
-  [circuit instruction]
-  (let [not-node (keyword (last (re-find #"NOT (.*) ->" instruction)))]
-    (assoc circuit
-      (get-target-node instruction)
-      (to-unsigned (bit-not (circuit not-node))))))
-
-(defn parse-connection-input
+(defn- parse-connection-input
   [instruction]
-  (re-matches #"([^\s]+) ([A-Z]+) ([^\s]+) .*" instruction))
+  (re-matches #"([^\s]*) ([A-Z]+) ([^\s]+) .*" instruction))
+
+(defn- get-first-command
+  [instruction]
+  (re-find #"[^\s]+" instruction))
+
+(defn- to-int
+  [x]
+  (Integer/parseInt x))
+
+(defn bsr
+  [& args]
+  (when (> (count args) 2)
+    (println args))
+  (apply bit-shift-right args))
 
 (defmulti wire-gate
-  (fn [circuit instruction]
-    (let [[_ arg1 command arg2] (parse-connection-input instruction)]
-         command)))
+  (fn [instruction first-command [_ arg1 command arg2]]
+    (cond (re-matches #"[0-9]+" first-command)
+          "INPUT"
+          (re-matches #"NOT" first-command)
+          "NOT"
+          :else
+          command)))
 
 (defmethod wire-gate "AND"
-  [circuit instruction]
-  (let [[_ arg1 _ arg2] (parse-connection-input instruction)
-        value-1 (circuit (keyword arg1))
-        value-2 (circuit (keyword arg2))]
-    (assoc circuit (get-target-node instruction) (to-unsigned (bit-and value-1 value-2)))))
+  [instruction _ [_ value-1 _ value-2]]
+  [(comp to-unsigned bit-and) (keyword value-1) (keyword value-2)])
 
 (defmethod wire-gate "OR"
-  [circuit instruction]
-  (let [[_ arg1 _ arg2] (parse-connection-input instruction)
-        value-1 (circuit (keyword arg1))
-        value-2 (circuit (keyword arg2))]
-    (assoc circuit (get-target-node instruction) (to-unsigned (bit-or value-1 value-2)))))
+  [instruction _ [_ value-1 _ value-2]]
+  [(comp to-unsigned bit-or) (keyword value-1) (keyword value-2)])
 
 (defmethod wire-gate "LSHIFT"
-  [circuit instruction]
-  (let [[_ arg1 _ arg2] (parse-connection-input instruction)
-        value-1 (circuit (keyword arg1))
-        value-2 (Integer/parseInt arg2)]
-    (assoc circuit (get-target-node instruction) (to-unsigned (bit-shift-left value-1 value-2)))))
+  [instruction _ [_ value-1 _ value-2]]
+  [(comp to-unsigned bit-shift-left) (keyword value-1) (to-int value-2)])
 
 (defmethod wire-gate "RSHIFT"
-  [circuit instruction]
-  (let [[_ arg1 _ arg2] (parse-connection-input instruction)
-        value-1 (circuit (keyword arg1))
-        value-2 (Integer/parseInt arg2)]
-    (assoc circuit (get-target-node instruction) (to-unsigned (bit-shift-right value-1 value-2)))))
+  [instruction _ [_ value-1 _ value-2]]
+  [(comp to-unsigned bsr) (keyword value-1) (to-int value-2)])
 
-(defn wire
-  [circuit instruction]
-  (let [first-command (re-find #"[^\s]+" instruction)]
-    (cond (re-matches #"[0-9]+" first-command)
-          (wire-input circuit first-command instruction)
-          (re-matches #"NOT" first-command)
-          (wire-not circuit instruction)
-          :else
-          (wire-gate circuit instruction))))
+(defmethod wire-gate "NOT"
+  [instruction _ [_ value-1 _ value-2]]
+  (let [not-node (keyword (last (re-find #"NOT (.*) ->" instruction)))]
+    [(comp to-unsigned bit-not) not-node]))
 
-(defn wire-circuit
+(defmethod wire-gate "INPUT"
+  [instruction first-command _]
+  [identity (to-int first-command)])
+
+(defmethod wire-gate :default
+  [instruction first-command _]
+  [identity (keyword first-command)])
+
+(defn- to-command
+  [instruction]
+  (wire-gate instruction
+             (get-first-command instruction)
+             (parse-connection-input instruction)))
+
+(defn- wire
+  [circuit instruction]
+  (assoc circuit
+    (get-target-node instruction)
+    (to-command instruction)))
+
+(defn- wire-circuit
   [instructions]
   (reduce
    wire
    {}
    instructions))
+
+(defn- find-values
+  [wired-circuit args]
+  (flatten
+   (for [arg args]
+     (if (keyword? arg)
+       (find-values wired-circuit (rest (wired-circuit arg)))
+       arg))))
+
+(defn- execute
+  [wired-circuit [node [command & args]]]
+  (assoc wired-circuit node
+         (apply command (find-values wired-circuit args))))
+
+
+(defn run-network
+  [instructions]
+  (let [wired-circuit (wire-circuit instructions)]
+    (reduce execute wired-circuit wired-circuit)))
