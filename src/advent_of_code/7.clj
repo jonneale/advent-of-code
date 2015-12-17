@@ -6,15 +6,25 @@
     (+ x (* 2 (inc (Short/MAX_VALUE))))
     x))
 
+(def simple-input
+  (clojure.string/split
+   "x AND y -> d
+456 -> y
+a -> x
+123 -> a"
+       #"\n"))
+
 (def test-input
-  ["123 -> x"
-   "456 -> y"
-   "x AND y -> d"
-   "x OR y -> e"
-   "x LSHIFT 2 -> f"
-   "y RSHIFT 2 -> g"
-   "NOT x -> h"
-   "NOT y -> i"])
+  (clojure.string/split
+   "123 -> x
+456 -> y
+x AND y -> d
+x OR y -> e
+x LSHIFT 2 -> f
+y RSHIFT 2 -> g
+NOT x -> h
+NOT y -> i"
+       #"\n"))
 
 (def input
   (clojure.string/split (slurp "./resources/7.txt") #"\n"))
@@ -35,15 +45,15 @@
   [x]
   (Integer/parseInt x))
 
-(defn bsr
-  [& args]
-  (when (> (count args) 2)
-    (println args))
-  (apply bit-shift-right args))
+(defn- keyword-or-int
+  [value]
+  (if (re-find #"[0-9]+" value)
+    (Integer/parseInt value)
+    (keyword value)))
 
 (defmulti wire-gate
   (fn [instruction first-command [_ arg1 command arg2]]
-    (cond (re-matches #"[0-9]+" first-command)
+    (cond (re-matches #"[0-9]+ ->.*" first-command)
           "INPUT"
           (re-matches #"NOT" first-command)
           "NOT"
@@ -52,32 +62,32 @@
 
 (defmethod wire-gate "AND"
   [instruction _ [_ value-1 _ value-2]]
-  [(comp to-unsigned bit-and) (keyword value-1) (keyword value-2)])
+  ["AND" (comp to-unsigned bit-and) (keyword-or-int value-1) (keyword-or-int value-2)])
 
 (defmethod wire-gate "OR"
   [instruction _ [_ value-1 _ value-2]]
-  [(comp to-unsigned bit-or) (keyword value-1) (keyword value-2)])
+  ["OR" (comp to-unsigned bit-or) (keyword-or-int value-1) (keyword-or-int value-2)])
 
 (defmethod wire-gate "LSHIFT"
   [instruction _ [_ value-1 _ value-2]]
-  [(comp to-unsigned bit-shift-left) (keyword value-1) (to-int value-2)])
+  ["LSHIFT" (comp to-unsigned bit-shift-left) (keyword-or-int value-1) (to-int value-2)])
 
 (defmethod wire-gate "RSHIFT"
   [instruction _ [_ value-1 _ value-2]]
-  [(comp to-unsigned bsr) (keyword value-1) (to-int value-2)])
+  ["RSHIFT" (comp to-unsigned bit-shift-right) (keyword-or-int value-1) (to-int value-2)])
 
 (defmethod wire-gate "NOT"
   [instruction _ [_ value-1 _ value-2]]
   (let [not-node (keyword (last (re-find #"NOT (.*) ->" instruction)))]
-    [(comp to-unsigned bit-not) not-node]))
+    ["NOT" (comp to-unsigned bit-not) not-node]))
 
 (defmethod wire-gate "INPUT"
   [instruction first-command _]
-  [identity (to-int first-command)])
+  ["INPUT" identity (to-int first-command)])
 
 (defmethod wire-gate :default
   [instruction first-command _]
-  [identity (keyword first-command)])
+  ["PASS-THROUGH" identity (keyword-or-int first-command)])
 
 (defn- to-command
   [instruction]
@@ -98,21 +108,44 @@
    {}
    instructions))
 
-(defn- find-values
-  [wired-circuit args]
-  (flatten
-   (for [arg args]
-     (if (keyword? arg)
-       (find-values wired-circuit (rest (wired-circuit arg)))
-       arg))))
+(defn update-args
+  [circuit args]
+  (for [arg args]
+    (let [potential-new-value (circuit arg)]
+      (if (number? potential-new-value)
+        potential-new-value
+        arg))))
 
-(defn- execute
-  [wired-circuit [node [command & args]]]
-  (assoc wired-circuit node
-         (apply command (find-values wired-circuit args))))
+(defn run
+  [original-circuit]
+  (loop [circuit original-circuit nodes-to-update (keys original-circuit)]
+    (let [node  (first nodes-to-update)
+          value (circuit node)]
+      (cond (not node)
+            circuit
+
+            (not value)
+            (recur circuit (concat (rest nodes-to-update) [node]))
+
+            (number? value)
+            (recur circuit (rest nodes-to-update))
+
+            :else
+            (let [[name fn & args] value]
+              (if (every? number? args)
+                (recur (assoc circuit node (apply fn args))
+                       (rest nodes-to-update))
+                (recur (assoc circuit node (into [name fn] (update-args circuit args)))
+                       (concat (rest nodes-to-update) [node]))))))))
 
 
-(defn run-network
-  [instructions]
-  (let [wired-circuit (wire-circuit instructions)]
-    (reduce execute wired-circuit wired-circuit)))
+(defn answer-1
+  []
+  (:a (run (wire-circuit input))))
+
+(defn answer-2
+  []
+  (let [wired-circuit (wire-circuit input)
+        a-value (:a (run wired-circuit))
+        new-circuit (assoc wired-circuit :b a-value)]
+    (:a (run new-circuit))))
