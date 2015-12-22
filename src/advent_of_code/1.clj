@@ -1,6 +1,6 @@
 (ns advent-of-code.1)
 
-(def input (slurp "resources/1.txt"))
+(def input (clojure.string/trim-newline (slurp "resources/1.txt")))
 
 (def mask
   {\( 1
