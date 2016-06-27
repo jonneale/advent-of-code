@@ -26,6 +26,8 @@
   {:turns 6
    :name "shield       "
    :effect identity
+   :initial-event (fn [state]
+                    (update-in state [:player :defense] #(+ % 7)))
    :final-event (fn [state]
                   (update-in state [:player :defense] #(- % 7)))})
 
@@ -33,14 +35,16 @@
   {:turns 6
    :name "poison      -"
    :effect (damage-boss-fn 3)
-   :final-event identity})
+   :final-event identity
+   :initial-event identity})
 
 (def recharge-fn
   {:turns 5
    :name "recharge    -"
    :effect (fn [state]
-              (update-in state [:player :mana] #(+ % 101)))
-   :final-event identity})
+             (update-in state [:player :mana] #(+ % 101)))
+   :final-event identity
+   :initial-event identity})
 
 (def magic-missile
   {:cost 53
@@ -59,7 +63,6 @@
    :name "shield          -"
    :effect (fn [state]
              (-> state
-                 (update-in [:player :defense] #(+ % 7))
                  (update-in [:effects] #(conj % shield-effect-fn))))})
 
 (def poison
@@ -85,13 +88,19 @@
 (defn apply-delayed-effects
   [state]
   (let [effects (:effects state)
+        initial-effects    (filter (comp nil? :effect-applied) effects)
         expiring-effects   (filter #(zero? (:turns %)) effects)
         continuing-effects (remove #(zero? (:turns %)) effects)
-        state-with-expired-events-applied (reduce (fn [agg-state effect] ((:final-event effect) agg-state)) state expiring-effects)]
+        state-with-initial-effects-applied (reduce (fn [agg-state effect] ((:initial-event effect) agg-state)) state initial-effects)
+        state-with-expired-events-applied (reduce (fn [agg-state effect] ((:final-event effect) agg-state)) state-with-initial-effects-applied expiring-effects)]
     (update-in 
      (reduce apply-effect state-with-expired-events-applied continuing-effects)
      [:effects]
-     #(remove nil? (map (fn [effect] (when-not (zero? (:turns effect)) (update-in effect [:turns] dec))) %)))))
+     #(remove nil? (map (fn [effect]
+                          (when-not (zero? (:turns effect))
+                            (-> effect
+                                (assoc :effect-applied true)
+                                (update-in [:turns] dec)))) %)))))
 
 (defn apply-action
   [original-game-state action-this-turn]
@@ -114,7 +123,7 @@
                                                     (- (-> state :boss :damage)
                                                        (-> state :player :defense))))))
 
-(def max-turns 8)
+(def max-turns 10)
 
 (defn check-end-state
   [state]
@@ -156,41 +165,38 @@
       (update-in [:turns] inc)
       check-end-state))
 
-(def cheapest-winner
-  (atom nil))
-
-(defn cost
-  [state]
-  (reduce + (map :cost (:history state))))
-
 (defn run
   [state]
   (flatten
    (for [action (filter-possible-actions state)]
      (let [new-state (advance-one-tick state action)]
-       (if (and @cheapest-winner (> (cost new-state)
-                                    (cost @cheapest-winner)))
-         nil
-         (if-let [result (:result new-state)]
-           (if (= :player-wins result)
-             (reset! cheapest-winner new-state)
-             nil)
-           (run new-state)))))))
+       (if-let [result (:result new-state)]
+         (if (= :player-wins result)
+           new-state
+           nil)
+         (run new-state))))))
 
 (defn find-quick-wins
   [initial-state]
-  (run initial-state))
+  (first
+   (sort-by (fn [final-state]
+              (reduce + (map :cost (:history final-state))))
+            (filter #(= :player-wins (:result %)) (run initial-state)))))
 
-
+        
 (defn run-sequence
   [initial-state actions]
   (do
     (print-state initial-state)
     (reduce (fn [agg-state action]
               (let [new-state (advance-one-tick agg-state action)]
-                (Thread/sleep 1000)                                  
+                (Thread/sleep 1000)
                 (print-state new-state)
                 new-state))
             initial-state
             actions)
     nil))
+
+
+
+
