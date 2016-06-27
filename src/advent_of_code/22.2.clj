@@ -1,11 +1,11 @@
 (ns advent-of-code.22.2)
 
 (def initial-game-state
-  {:player {:mana       250
-            :hit-points 10
+  {:player {:mana       500
+            :hit-points 50
             :defense    0}
-   :boss   {:damage     8
-            :hit-points 14}
+   :boss   {:damage     10
+            :hit-points 71}
    :effects []
    :history []
    :turns   0})
@@ -22,10 +22,15 @@
     (update-in state [:player :hit-points]
                #(+ % health))))
 
+(declare poison)
+(declare recharge)
+(declare shield)
+
 (def shield-effect-fn
   {:turns 6
    :name "shield       "
    :effect identity
+   :parent shield
    :initial-event (fn [state]
                     (update-in state [:player :defense] #(+ % 7)))
    :final-event (fn [state]
@@ -34,6 +39,7 @@
 (def poison-fn
   {:turns 6
    :name "poison      -"
+   :parent poison
    :effect (damage-boss-fn 3)
    :final-event identity
    :initial-event identity})
@@ -41,6 +47,7 @@
 (def recharge-fn
   {:turns 5
    :name "recharge    -"
+   :parent recharge
    :effect (fn [state]
              (update-in state [:player :mana] #(+ % 101)))
    :final-event identity
@@ -114,20 +121,28 @@
 
 (defn filter-possible-actions
   [state]
-  (let [remaining-mana (-> state :player :mana)]
-    (filter #(< (:cost %) remaining-mana) actions)))
+  (let [remaining-mana (-> state :player :mana)
+        current-effects (set (map (comp :name :parent) (remove #(< (:turns %) 2) (-> state :effects))))]
+    (filter #(and (not (current-effects (:name %)))
+                  (< (:cost %) remaining-mana)) actions)))
+
+(defn calculate-boss-damage
+  [state]
+  (max 1
+       (- (-> state :boss :damage)
+          (-> state :player :defense))))
 
 (defn boss-attack
   [state]
-  (update-in state [:player :hit-points] #(- % (max 1
-                                                    (- (-> state :boss :damage)
-                                                       (-> state :player :defense))))))
+  (update-in state [:player :hit-points] #(- % (calculate-boss-damage state))))
 
-(def max-turns 10)
+(def max-turns 40)
 
 (defn check-end-state
   [state]
-  (cond (<= (-> state :boss :hit-points) 0)
+  (cond (:result state)
+        state
+        (<= (-> state :boss :hit-points) 0)
         (assoc state :result :player-wins)
         (<= (-> state :player :hit-points) 0)
         (assoc state :result :boss-wins)
@@ -155,47 +170,91 @@
     (println "-              " (:name action)))
   (println "---------------------------------"))
 
-(defn advance-one-tick
-  [state action]
+(defn decrease-player-hp
+  [state hard-mode?]
+  (if hard-mode?
+    (update-in state [:player :hit-points] dec)
+    state))
+
+(defn player-turn
+  [state action hard-mode?]
   (-> state
+      (decrease-player-hp hard-mode?)
+      check-end-state
       apply-delayed-effects
       (apply-action action)
+      (update-in [:turns] inc)
+      check-end-state))
+
+(defn boss-turn
+  [state]
+  (-> state
       apply-delayed-effects
       (boss-attack)
       (update-in [:turns] inc)
       check-end-state))
 
+(defn advance-one-tick
+  [state action hard-mode?]
+  (-> state
+      (player-turn action hard-mode?)
+      boss-turn))
+
 (defn run
-  [state]
+  [state hard-mode?]
   (flatten
    (for [action (filter-possible-actions state)]
-     (let [new-state (advance-one-tick state action)]
+     (let [new-state (advance-one-tick state action hard-mode?)]
        (if-let [result (:result new-state)]
          (if (= :player-wins result)
            new-state
            nil)
-         (run new-state))))))
+         (run new-state hard-mode?))))))
 
 (defn find-quick-wins
-  [initial-state]
+  [initial-state hard-mode?]
   (first
    (sort-by (fn [final-state]
               (reduce + (map :cost (:history final-state))))
-            (filter #(= :player-wins (:result %)) (run initial-state)))))
+            (filter #(= :player-wins (:result %)) (run initial-state hard-mode?)))))
+
+(defn print-player-state
+  [state action]
+  (let [player (:player state)]
+    (println "-- Player Turn --")
+    (println "- Player has " (player :hit-points) " hit points, " (player :defense) " armor, " (player :mana) " mana")
+    (println "- Boss has " (-> state :boss :hit-points) " hit points")
+    (doseq [effect (:effects state)]
+      (println (:name effect) "; its timer is now " (:turns effect)))
+    (println "Player casts " (:name action))
+    (println "")
+    (println "")))
+
+(defn print-boss-state
+  [state]
+  (let [player (:player state)]
+    (println "-- Boss Turn --")
+    (println "- Player has " (player :hit-points) " hit points, " (player :defense) " armor, " (player :mana) " mana")
+    (println "- Boss has " (-> state :boss :hit-points) " hit points")
+    (doseq [effect (:effects state)]
+      (println (:name effect) "; its timer is now " (:turns effect)))
+    (println "Boss attacks for  " (calculate-boss-damage state) " damage!")
+    (println "")
+    (println "")))
 
         
 (defn run-sequence
-  [initial-state actions]
-  (do
-    (print-state initial-state)
-    (reduce (fn [agg-state action]
-              (let [new-state (advance-one-tick agg-state action)]
-                (Thread/sleep 1000)
-                (print-state new-state)
-                new-state))
-            initial-state
-            actions)
-    nil))
+  [initial-state actions hard-mode?]
+  (reduce (fn [agg-state action]
+            
+            (let [post-player-turn-state (player-turn agg-state action hard-mode?)
+                  new-state              (boss-turn post-player-turn-state)]
+              (Thread/sleep 1000)
+              (print-player-state post-player-turn-state action)
+              (print-boss-state new-state)
+              new-state))
+          initial-state
+          actions))
 
 
 
