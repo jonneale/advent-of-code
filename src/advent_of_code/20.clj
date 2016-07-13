@@ -48,3 +48,31 @@
   (apply merge (for [x (range 20 50)
                      y (range 10 30)]
                  {[x y] (char x)})))
+
+;;;;;;;;;;;; Solution here, everything above is WIP ;;;;;;;;;;;;;;;;;;;;;;;;;
+
+(defn factors [n]
+  (into (sorted-set)
+    (mapcat (fn [x] [x (/ n x)])
+            (filter #(zero? (rem n %)) (range 1 (inc (Math/sqrt n)))))))
+
+
+(defn print-factors
+  [x target]
+  (loop [y x]
+    (let [r (reduce + (map #(* % 10) (factors y)))]
+      (if (> r target)
+        (println "SUCCESS - " y " " r)
+        (recur (inc y))))))
+
+(defn filter-elves-who-have-visited-50-houses
+  [y factors]
+  (drop-while #(>= (/ y %) 50) (sort factors)))
+
+(defn find-part-2
+  [x target]
+  (loop [y x]
+    (let [r (reduce + (map #(* % 11) (filter-elves-who-have-visited-50-houses y (factors y))))]
+      (if (> r target)
+        (println "SUCCESS - " y " " r)
+        (recur (inc y))))))
