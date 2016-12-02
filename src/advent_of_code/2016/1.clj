@@ -1,4 +1,4 @@
-(ns advent-of-code.2016.12)
+(ns advent-of-code.2016.1)
 
 (def parse-input
   (map #(clojure.string/replace % #"[^A-Z0-9]" "") (clojure.string/split (slurp "resources/2016-1.txt") #",")))
@@ -57,7 +57,7 @@
 
 (defn distance-to-final-position
   [inputs]
-  (distance-to-position (last (find-final-position inputs))))
+  (distance-to-position (last (all-interim-positions inputs))))
 
 (defn first-position-visited-twice
   [inputs]
