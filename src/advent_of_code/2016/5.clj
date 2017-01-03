@@ -20,7 +20,7 @@
 (defn nth-character
   [seed n index]
   (let [hash (md5 seed index)]
-    (if (< (count hash) (- 32 (inc n))) 0 (first hash))))
+    (if (< (count hash) (- 32 (inc n))) 0 (nth hash (- )))))
 
 (def test-seed "abc")
 

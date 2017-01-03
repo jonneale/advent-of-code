@@ -50,8 +50,7 @@
 (def standard-layout
   [[1 2 3] [4 5 6] [7 8 9]])
 
-(def fancy-layout
-  [[\X \X 1 \X \X] [\X 2 3 4 \X] [5 6 7 8 9] [\X \A \B \C \X] [\X \X \D \X \X]])
+[[\X \X 1 \X \X] [\X 2 3 4 \X] [5 6 7 8 9] [\X \A \B \C \X] [\X \X \D \X \X]]
 
 #_ (find-code parse-input standard-layout [1 1])
 
