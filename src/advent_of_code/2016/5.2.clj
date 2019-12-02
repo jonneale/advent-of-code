@@ -32,11 +32,10 @@
 (defn find-hash-indexes
   [seed done-fn]
   (loop [indexes [0]]
-    (println indexes)
     (if (done-fn indexes)
       indexes
       (let [latest-value (inc (last indexes))
-            new-value    (next-valid-hash latest-value seed)]
+            new-value    (quick-next-valid-hash latest-value seed)]
         (recur (conj indexes new-value))))))
 
 (defn password-length-is-8?
@@ -50,4 +49,4 @@
 
 (defn naive-password
   [seed]
-  (format-password (find-hash-indexes seed password-length-is-8?)))
+  (format-password seed (find-hash-indexes seed password-length-is-8?)))

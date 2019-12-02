@@ -16,15 +16,20 @@
   [seed index]
   (<= (count (md5 seed index)) 27))
 
-
 (defn nth-character
   [seed n index]
   (let [hash (md5 seed index)]
     (if (< (count hash) (- 32 (inc n))) 0 (nth hash (- )))))
 
+(defn sixth-character
+  [seed password]
+  (nth-character seed password 5))
+
 (def test-seed "abc")
 
 (def seed "reyedfim")
+
+
 
 (defn next-valid-hash
   [starting-index seed]
@@ -36,7 +41,6 @@
 (defn find-hash-indexes
   [seed done-fn]
   (loop [indexes [0]]
-    (println indexes)
     (if (done-fn indexes)
       indexes
       (let [latest-value (inc (last indexes))
@@ -53,7 +57,7 @@
 
 (defn naive-password
   [seed]
-  (format-password (find-hash-indexes seed password-length-is-8?)))
+  (format-password seed (find-hash-indexes seed password-length-is-8?)))
 
 (defn password-letter-in-every-space?
   [seed passwords]

@@ -7,6 +7,9 @@ The second floor contains a hydrogen generator.
 The third floor contains a lithium generator.
 The fourth floor contains nothing relevant.")
 
+(def input
+  (slurp "resources/2016/11.txt"))
+
 (defn floor-state
   [state]
   (dissoc state :elevator))
@@ -92,59 +95,38 @@ The fourth floor contains nothing relevant.")
 (defn every-microchip-present-has-a-generator? [elements]
   (let [microchips (filter #(= "microchip" (:type %)) elements)
         generators (filter #(= "generator" (:type %)) elements)]
-    (reduce (fn [all-microchips-so-far-have-generator microchip]
-              (let [chip-fuel (:fuel microchip)
-                    generators-with-same-fuel (filter #(= chip-fuel (:fuel %)) generators)]
-                (and all-microchips-so-far-have-generator 
-                     (not (empty? generators-with-same-fuel))))) 
-            true 
-            microchips)))
+    (every? true? (map (fn [microchip]
+                         (let [chip-fuel (:fuel microchip)]
+                           (not (empty? (filter #(= chip-fuel (:fuel %)) generators))))) microchips))))
 
 (defn no-microchips-destroyed? [elements]
   (or (no-generators-present? elements)
       (every-microchip-present-has-a-generator? elements)))
 
-(defn valid-move? [current-state history new-state]
+(defn valid-move? [current-state new-state]
   (and (= (set (keys current-state))
           (set (keys new-state)))
-       (every? true? (map no-microchips-destroyed? (vals (floor-state new-state))))
-       (not (contains? (set history) new-state))))
-
-(defn current-state-is-shortest-path-to-state? [state shortest-path-to-similar-state]
-  (or (empty? shortest-path-to-similar-state) 
-      (> (count (:history shortest-path-to-similar-state)) 
-         (count (:history state)))))
-
-;; (defn current-state-is-not-a-repeat? [state]
-;;   (= 1 (reduce max (vals (frequencies (:history state))))))
-
-(defn remove-duplicates [states]
-  (loop [index 0 non-duplicate-states []]
-    (if (= index (count states))
-      non-duplicate-states
-      (let [state-to-compare (nth states index)
-            other-states     (concat (take index states) (drop (inc index) states))
-            same-states      (filter #(= (:state %) (:state state-to-compare)) other-states)
-            shortest-path-to-similar-state (first (sort-by (comp count :history) same-states))]
-        (if (and (current-state-is-shortest-path-to-state? state-to-compare shortest-path-to-similar-state))
-          (recur (inc index) (conj non-duplicate-states state-to-compare))
-          (recur (inc index) non-duplicate-states))))))
+       (every? true? (map no-microchips-destroyed? (vals (floor-state new-state))))))
 
 (defn add-history
-  [current-state history  possible-moves]
-  (map (fn [state] {:state state :history (conj history current-state)}) possible-moves))
+  [history possible-moves]
+  (map (fn [state] {:state state :history (inc history)}) possible-moves))
+
+(defn previously-seen? [previous-states current-state]
+  (not (empty? (filter #(= % current-state) previous-states))))
 
 (defn search-for-path-to-victory
   [initial-state]
-  (loop [possible-next-moves [{:state initial-state :history []}]]
+  (loop [possible-next-moves [{:state initial-state :history 0}] all-previously-seen-states [] ]
     (let [[current-state-and-history & other-moves] possible-next-moves
           {current-state :state history :history} current-state-and-history]
       (if (winning-state? current-state)
         current-state-and-history
         (let [future-states (->> current-state
                                  all-possible-moves
-                                 (filter (partial valid-move? current-state history))
-                                 (add-history current-state history)
-                                 (concat other-moves)
-                                 (remove-duplicates))]
-          (recur future-states))))))
+                                 (filter (partial valid-move? current-state))
+                                 (remove (partial previously-seen? all-previously-seen-states))
+                                 (add-history history)
+                                 (concat other-moves))]
+
+          (recur future-states (conj all-previously-seen-states )))))))
