@@ -60,7 +60,3 @@
               (recur (rest possibles))
               (first candidate))
             (recur remaining-possibles)))))))
-
-
-
-

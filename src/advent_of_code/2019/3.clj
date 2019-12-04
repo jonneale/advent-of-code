@@ -79,5 +79,4 @@ U7,R6,D4,L4")
   (let [input (parse-input i)
         wire-routes (map wire-route input)
         intersections (find-intersections input)]
-    (second (sort (find-intersection-locations wire-routes intersections))))
-  )
+    (second (sort (find-intersection-locations wire-routes intersections)))))
