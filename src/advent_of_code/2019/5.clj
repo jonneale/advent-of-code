@@ -35,15 +35,6 @@
                    (i (i (+ position (inc ix))))))
                param-modes))
 
-(def debug? false)
-(defn p
-  [& s]
-  (when debug?
-    (do
-      (doseq [v s] (pr v))
-      (println "")
-      (Thread/sleep 5000))))
-
 (defn quick-maffs
   [operator opcode command i position]
   (let [param-modes (drop (count opcode) (reverse (format "%04d" command)))
@@ -51,7 +42,6 @@
         value       (apply operator params)
         output-position (i (+ position 3))
         next-position   (+ position 4)]
-    (p "PArams: " params)
     [(assoc i output-position value) next-position]))
 
 (defn lt
@@ -78,7 +68,6 @@
 (defmethod process-opcode "03"
   [opcode command i position]
   (let [output-location (i (inc position))]
-    (p "storing value " (:input i) " at position " (i (inc position)))
     [(assoc i output-location (:input i)) (+ position 2)]))
 
 (defmethod process-opcode "04"
@@ -93,8 +82,6 @@
   (let [param-modes                   (drop (count opcode)  (reverse (format "%04d" command)))
         [value-to-test jump-location] (get-params i position param-modes)
         next-position                 (if (predicate value-to-test) jump-location (+ position 3))]
-    (p "Maybe jumping? checking " value-to-test)
-    (p "moving to " next-position)
     [i next-position]))
 
 (defmethod process-opcode "05"
@@ -119,12 +106,9 @@
 
 (defn process-command
   [i position]
-  (p (sort (dissoc i :input)))
   (let [command     (i position)
         str-command (format "%02d" command)
         opcode      (subs str-command (- (count str-command) 2) (count str-command))]
-    (p "Command to process "  command)
-    (p "Opcode " opcode)
     (process-opcode opcode command i position)))
 
 (defn process-input
@@ -132,9 +116,8 @@
    (process-input i 0))
   ([i position]
    (let [[output new-position] (process-command i position)]
-     (p "New position " new-position)
      (if (= new-position halt)
-       (p i)
+       nil
        (recur output new-position)))))
 
 
