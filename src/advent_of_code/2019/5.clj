@@ -19,16 +19,6 @@
          (map-indexed (fn [i x] {i (Integer/parseInt x)})
                       (s/split (s/replace i #"\n" "") #","))))
 
-(defn store-input
-  [input]
-  (fn [location]
-    input))
-
-(defn return-input
-  [input]
-  (fn [location]
-    (input location)))
-
 (defn get-params
   [i position param-modes]
   (map-indexed (fn [ix mode]
@@ -37,71 +27,72 @@
                    (i (i (+ position (inc ix))))))
                param-modes))
 
-(defmulti process
-  (fn [command & _]
-    command))
-
-(defmethod process :store
-  [command i position param-modes]
-  (let [[location] (get-params i position [immediate-mode])]
-    (assoc i location (i :input))))
-
-(defmethod process :return
-  [command i position param-modes]
-  (let [[location] (get-params i position [immediate-mode])]
-    (println (i location))
-    i))
-
-
-(defmethod process :default
-  [command i position param-modes]
-  (let [params (get-params i position param-modes)
-        output (i (+ position (inc (count params))))]
-    (assoc i output (apply command params))))
-
 (def debug? false)
 (defn p
   [& s]
   (when debug?
-    (do (println (apply str s)
-                 (Thread/sleep 1000)))))
+    (do
+      (doseq [v s] (prn v))
+      (println "")
+      (Thread/sleep 1000))))
 
-(defn parse-command
+(defmulti process-opcode
+  (fn [opcode & _]
+    opcode))
+
+(defn quick-maffs
+  [operator opcode command i position]
+  (let [param-modes (drop (count opcode) (reverse (format "%04d" command)))
+        params      (get-params i position param-modes)
+        value       (apply operator params)
+        output-position (i (+ position 3))
+        next-position   (+ position 4)]
+    (p "PArams: " params)
+    [(assoc i output-position value) next-position]))
+
+(defmethod process-opcode "01"
+  [opcode command i position]
+  (quick-maffs + opcode command i position))
+
+(defmethod process-opcode "02"
+  [opcode command i position]
+  (quick-maffs * opcode command i position))
+
+(defmethod process-opcode "03"
+  [opcode command i position]
+  (let [output-location (i (inc position))]
+    (p "storing value " (:input i) " at position " (i (inc position)))
+    [(assoc i output-location (:input i)) (+ position 2)]))
+
+(defmethod process-opcode "04"
+  [opcode command i position]
+  (let [output-location (i (inc position))]
+    (p "outputting value at " output-location)
+    (println (i output-location))
+    [i (+ position 2)]))
+
+(defmethod process-opcode :default
+  [_ _ i & i]
+  [i halt])
+
+(defn process-command
   [i position]
-  (let [command (i position)
+  (let [command     (i position)
         str-command (format "%02d" command)
-        opcode (subs str-command (- (count str-command) 2) (count str-command))]
-    (p "processing command " opcode)
-    (cond (= opcode "01")
-          [+ (drop (count opcode) (reverse (format "%04d" command))) 2]
-          (= opcode "02")
-          [* (drop (count opcode) (reverse (format "%04d" command))) 2]
-          (= opcode "03")
-          [:store (drop (count opcode) (reverse (format "%03d" command))) 0]
-          (= opcode "04")
-          [:return (drop (count opcode) (reverse (format "%03d" command))) 0]
-          (= opcode "99")
-          [halt [] 0]
-          :else
-          [halt [] 0])))
+        opcode      (subs str-command (- (count str-command) 2) (count str-command))]
+    (p "Command to process "  command)
+    (p "Opcode " opcode)
+    (process-opcode opcode command i position)))
 
 (defn process-input
   ([i]
    (process-input i 0))
   ([i position]
-   (let [[command param-modes number-of-params-ignoring-output] (parse-command i position)
-         _ (p "-------------------")
-         _ (p "command "       command)
-         _ (p "position "     position)
-         _ (p "param-modes "  param-modes)
-         _ (p "param count "  (count param-modes))
-         _ (p "new position " (+ position number-of-params-ignoring-output 2))
-         _ (p "-------------------")
-         ;; + 2 because command itself and output fields
-         new-position (+ position number-of-params-ignoring-output 2)]
-     (if (= command halt)
+   (let [[output new-position] (process-command i position)]
+     (p "New position " new-position)
+     (if (= new-position halt)
        (p i)
-       (recur (process command i position param-modes) new-position)))))
+       (recur output new-position)))))
 
 
 (defn run-with-input-value
