@@ -26,10 +26,10 @@
 (defn parse-worry-reduction
   [test-line]
   (let [factor (read-string (last (s/split test-line #" ")))]
-    (fn [x] (if (zero? (rem x factor))
-              #_factor
-              x
-              x))))
+    (fn [x] (mod x 9699690))))
+
+#_96577
+#_177827650
 
 (defn parse-monkey
   [part-1? monkey]
@@ -68,7 +68,7 @@
     (update-in [:items-seen] #(+ % (count items)))
     (assoc :items []))
    (for [item items]
-     (let [new-worry (bigint (Math/floor (worry-reduction-level (op item))))]
+     (let [new-worry (bigint (worry-reduction-level (op item)))]
        [new-worry (test new-worry)]))])
 
 (defn throw-item
@@ -97,4 +97,4 @@
 
 (defn solve-part-2
   []
-  (take 4 (map :items-seen (vals (process-rounds 45 (test-input false))))))
+  (reduce * (take 2 (reverse (sort (map :items-seen (vals (process-rounds 10000 (input false)))))))))
