@@ -50,7 +50,7 @@
   [[current-min current-max] [new-min new-max]]
   (not
    (or (> current-min new-max)
-       (< current-max new-min))))
+       (< (inc current-max) new-min))))
 
 (defn increases-range?
   [current-gaps new-gap]
@@ -118,3 +118,46 @@
   [row input]
   (let [all-illegal-ranges (fast-illegals-on-row row input)]
     (reduce (fn[agg [max min]] (+ agg (- min max))) 0 all-illegal-ranges)))
+
+(defn legal-points
+  [[previous-max found-so-far] [next-min next-max]]
+  (let [new-values (range (inc previous-max) next-min)
+        values-to-store (if (empty? new-values) found-so-far (conj found-so-far new-values))]
+    [next-max
+     values-to-store]))
+
+(defn any-legal-points-between?
+  [min max illegal-ranges]
+  (reduce legal-points
+          [min []]
+          (filter (fn[[range-min range-max]]
+                    (and (> max range-min)
+                         (< min range-max)))
+                  illegal-ranges)))
+
+(defn valid-locations-on-each-row
+  [input min max]
+  (for [row (range 0 max)]
+    (let [all-illegal-ranges (fast-illegals-on-row row input)]
+      (any-legal-points-between? min max all-illegal-ranges))))
+
+(defn fast-part-2
+  [input min max]
+  (first
+   (drop-while (comp #(= % 1) count last)
+               (for [row (range min max)]
+                 [row (fast-illegals-on-row row input)]))))
+
+
+(defn p-fast-part-2
+  [input min max]
+  (first
+   (drop-while (comp #(= % 1) count last)
+               (pmap #(vector % (fast-illegals-on-row % input)) (range min max)))))
+
+(defn part-2
+  [input min max]
+  (take 1
+        (remove (comp empty? last) (valid-locations-on-each-row input min max))))
+
+;;11756174628223

@@ -31,8 +31,3 @@
   (reduce +
           (for [group (partition 3 i)]
             (alphabet-map (first (apply clojure.set/intersection (map set group)))))))
-
-
-(def advent-of-code-top-leaders
-  (set/intersection people-who-prepare-presentations-all-day
-                    people-with-small-children))

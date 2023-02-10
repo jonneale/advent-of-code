@@ -241,12 +241,12 @@
               (recur (concat agenda-tail only-legal-nodes) updated-result (inc i)))))))
 
 (defn calculate-route-cost
-  [input route-costs route]
+  [input route-costs route & [minutes]]
   (reduce (fn [[from-node flow-rate total-flowed time-left] to-node]
             (let [cost-step (inc (get route-costs [from-node to-node]))
                   flow-rate-change (get-in input [to-node :flow-rate])]
               [to-node (+ flow-rate flow-rate-change) (+ total-flowed (* flow-rate cost-step)) (- time-left cost-step)]))
-          [(first route) 0 0 30]
+          [(first route) 0 0 (or minutes 30)]
           (rest route)))
 
 (defn final-cost
@@ -270,6 +270,130 @@
         costs-with-all-open-valves (pmap (partial calculate-route-cost simple-input cost-map) routes)]
     (sort (pmap final-cost costs-with-all-open-valves))))
 
+(defn p2
+  [agenda i]
+  (when (zero? (mod i 5000))
+    (println i)
+    (println (str (new java.util.Date)))
+    (println (count agenda))
+    (println (reduce max (map :elephant-time-left agenda)))
+    (println (reduce min (map :elephant-time-left agenda)))
+    (println (reduce max (map :my-time-left agenda)))
+    (println (reduce min (map :my-time-left agenda)))
+    (clojure.pprint/pprint (take 5 agenda))
+    (println "----------------------------------------------------"))
+
+  )
+
+(defn find-all-routes-with-elephant
+  [simple-input cost-map starting-node]
+  (loop [agenda [{:my-current-node starting-node
+                  :elephant-current-node starting-node
+                  :unvisited-nodes (unvisited-nodes simple-input starting-node)
+                  :path [[starting-node] [starting-node]]
+                  :my-time-left 26
+                  :elephant-time-left 26}]
+         result [] i 0]
+    (let [[{:keys [path my-time-left my-current-node elephant-time-left elephant-current-node unvisited-nodes] :as agenda-head} & agenda-tail] agenda]
+      (p2 agenda i)
+      (cond (nil? agenda-head)
+            result
+            (empty? unvisited-nodes)
+            (recur agenda-tail (conj result agenda-head) (inc i))
+            :else
+            (let [new-routes (for [my-new-node       unvisited-nodes
+                                   elephant-new-node unvisited-nodes
+                                   :when             (and (not= my-new-node elephant-new-node)
+                                                          (> my-time-left (cost-map [my-current-node my-new-node]))
+                                                          (> elephant-time-left (cost-map [elephant-current-node elephant-new-node])))]
+                               {:my-current-node my-new-node
+                                :elephant-current-node elephant-new-node
+                                :unvisited-nodes (set/difference (set unvisited-nodes)
+                                                                 #{my-new-node elephant-new-node})
+                                :my-time-left (- my-time-left (inc (get cost-map [my-current-node my-new-node])))
+                                :elephant-time-left (- elephant-time-left (inc (get cost-map [elephant-current-node elephant-new-node])))
+                                :path [(-> path first (conj my-new-node))
+                                       (-> path last (conj elephant-new-node))]})
+                  updated-result     (conj result agenda-head)]
+              (recur (doall (concat agenda-tail new-routes)) updated-result (inc i)))))))
+
+
+(defn update-results
+  [results new-results]
+  (reduce
+   (fn[agg {:keys [visited-nodes total-flow]}]
+     (if-let [old-v (get agg visited-nodes)]
+       (if (> total-flow old-v)
+         (assoc agg visited-nodes total-flow)
+         agg)
+       (assoc agg visited-nodes total-flow)))
+   results
+   new-results))
+
+(defn bfs-2
+  [simple-input cost-map starting-node & [starting-time]]
+  (println starting-time)
+  (let [all-nodes (unvisited-nodes simple-input starting-node)]
+    (loop [agenda [{:current-node "AA" :time-left (or starting-time 30) :total-flow 0 :visited-nodes #{}}] results {}]
+      (let [[{:keys [current-node visited-nodes total-flow time-left] :as agenda-head} & agenda-tail] agenda]
+        (if (nil? agenda-head)
+          results
+          (let [new-nodes (for [node all-nodes
+                                :when (and (not= node current-node)
+                                           (not (contains? visited-nodes node))
+                                           (> time-left (inc (cost-map [current-node node]))))]
+                            (let [new-time-left (dec (- time-left (cost-map [current-node node])))]
+                              {:current-node node
+                               :time-left    new-time-left
+                               :total-flow (+ total-flow (* new-time-left (get-in simple-input [node :flow-rate])))
+                               :visited-nodes (set (conj visited-nodes node))}))
+                updated-results (update-results results new-nodes)]
+            (recur (doall (concat agenda-tail new-nodes)) updated-results)))))))
+
+(defn part-1
+  [input]
+  (let [simple-input (simplify-facts (initial-facts input))
+        cost-map (floyd-warshall simple-input)]
+    (apply max (vals (bfs-2 simple-input cost-map "AA")))))
+
+(defn total-disjoint-sets-for-this-route
+  [[route this-total] all-routes]
+  (remove zero?
+          (pmap
+           (fn [[other-route other-total]]
+             (if (empty? (set/intersection route other-route))
+               (+ this-total other-total)
+               0))
+           all-routes)))
+
+(defn find-disjoint-sets
+  [routes]
+  (apply max
+         (pmap (fn [route-and-total]
+                 (apply max (total-disjoint-sets-for-this-route route-and-total routes)))
+               routes)))
+
+(defn part-2
+  [input]
+  (let [simple-input (simplify-facts (initial-facts input))
+        cost-map (floyd-warshall simple-input)]
+    (find-disjoint-sets (bfs-2 simple-input cost-map "AA" 26))))
+
+(defn final-cost-with-elephant
+  [simple-input cost-map [elephant-path my-path]]
+  (let [elephant-path-cost (final-cost (calculate-route-cost simple-input cost-map elephant-path 26))
+        my-path-cost (final-cost (calculate-route-cost simple-input cost-map my-path 26))]
+    (+ elephant-path-cost my-path-cost)))
+
+(defn cost-of-routes-with-elephant
+  [input starting-node]
+  (let [simple-input (simplify-facts (initial-facts input))
+        cost-map (floyd-warshall simple-input)
+        resulting-routes (find-all-routes-with-elephant simple-input cost-map starting-node)
+        routes           (pmap :path resulting-routes)]
+    (sort (pmap (partial final-cost-with-elephant simple-input cost-map) routes))))
+
+
 (defn solve-part-1
   []
-  (last (cost-of-routes input)))
+  (last (cost-of-routes test-input "AA")))
