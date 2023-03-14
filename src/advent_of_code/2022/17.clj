@@ -100,7 +100,7 @@
      :blocks all-rocks
      :number-of-blocks 0
      :block-in-motion nil
-     :offsets [-3 -3 -3 -3 -3 -3 -3]
+     :offset 0
      :wind-currents (wind-currents input)
      :current-wind (first (wind-currents input))
      :highest-point (get-highest-point initial-grid)
@@ -202,9 +202,6 @@
   [state]
   (print-grid (:grid state)))
 
-(defn offsets
-  [grid block-position]
-  nil)
 
 (defn move-block-in-motion
   [{:keys [grid blocks block-in-motion wind-currents time number-of-blocks] :as state}]
@@ -219,15 +216,70 @@
       :blocks blocks
       :current-wind (first wind-currents)
       :number-of-blocks number-of-blocks
-      :offsets (calculate-offsets new-grid new-block-position)
       :wind-currents remaining-wind
       :time (inc time)})))
 
+(defn filled-squares-by-column
+  [grid]
+  (let [grouped-grid (group-by (comp first first) grid)]
+    (map (fn[[k vs]]
+           (filter (fn[[coords v]]
+                     (= v 1))
+                   vs))
+         grouped-grid)))
+
+(defn points-by-column
+  [grid]
+  (let [grouped-grid (group-by (comp first first) grid)]
+    (reduce (fn [agg [column vs]]
+              (assoc agg column
+                     (sort (map (comp last first) vs))))
+            {} grouped-grid)))
+
+(defn highest-point-in-column
+  [column]
+  (->> column
+       (map first)
+       (sort-by last)
+       last))
+
+(defn column-min-maxes
+  [highest-points-by-column]
+  (reduce (fn [[min-point max-point] [_ column-max]]
+            [(min min-point column-max)
+             (max max-point column-max)])
+          [Double/POSITIVE_INFINITY Double/NEGATIVE_INFINITY] highest-points-by-column))
+
+(defn select-from-low-to-high
+  [grid highest-points-by-column]
+  (let [[column-mins column-maxes] (column-min-maxes highest-points-by-column)]
+    (select-keys grid
+                 (for [x (range 8)
+                       y (range column-mins (inc column-maxes))]
+                   [x y]))))
+
+(defn peak-range
+  [grid]
+  (let [filled-squares (filled-squares-by-column grid)]
+    (if (some empty? filled-squares)
+      grid
+      (->> filled-squares
+           (map highest-point-in-column)
+           (select-from-low-to-high grid)))))
+
+(defn reset-state
+  [state]
+  (->> (state :grid)
+       (peak-range)
+       (assoc state :grid)))
+
 (defn run-one-step
-  [{:keys [grid blocks block-in-motion wind-currents time number-of-blocks] :as state}]
+  [{:keys [block-in-motion] :as starting-state}]
   (if block-in-motion
-    (move-block-in-motion state)
-    (let [[new-block & remaining-blocks] blocks
+    (move-block-in-motion starting-state)
+    (let [state (reset-state starting-state)
+          {:keys [grid blocks wind-currents time number-of-blocks]} state
+          [new-block & remaining-blocks] blocks
           highest-point  (get-highest-point grid)
           block-to-insert (insert-block new-block highest-point)]
       {:grid (insert-block-into-grid block-to-insert grid)
@@ -260,3 +312,41 @@
   (first
    (drop-while #(< (:number-of-blocks %) number-of-blocks)
                (iterate run-one-step (initial-state input)))))
+
+(defn s
+  [state]
+  (dissoc (dissoc state :blocks) :wind-currents))
+
+(defn solve-part-1
+  []
+  (tower-height
+   (run-for-n-blocks 2023)))
+
+(defn normalise
+  [grid]
+  (let [[column-min _] (-> grid keys column-min-maxes)]
+    (apply merge
+           (map (fn[[[x y] v]] {[x (- y column-min)] v}) grid))))
+
+(defn find-peaks
+  [state]
+  (let [grid (:grid state)]
+    (-> (peak-range grid)
+        normalise)))
+
+(defn part-2
+  []
+  (loop [state (initial-state test-input) check? false history []]
+    (if (zero? (mod (inc (:time state)) 100000))
+      [:fail history]
+      (cond check?
+            (let [crenelations (find-peaks state)
+                  new-state    crenelations #_[crenelations (:current-wind state)]
+                  new-history  (if crenelations (conj history new-state) history)]
+              (if (contains? history new-state)
+                (:time state)
+                (recur (run-one-step state) false new-history)))
+            (:block-in-motion state)
+            (recur (run-one-step state) false history)
+            :else
+            (recur (run-one-step state) true history)))))

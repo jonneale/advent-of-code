@@ -13,9 +13,8 @@
           (for [letter alphabet]
             (first (clojure.string/upper-case letter)))))
 
-
 (def alphabet-map
-  (apply merge (map-indexed (fn[i x] {x (inc i)} ) full-alpha)))
+  (apply merge (map-indexed (fn[i x] {x (inc i)}) full-alpha)))
 
 (defn find-items-in-multiple-compartments
   [i]
